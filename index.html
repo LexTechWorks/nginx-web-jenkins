@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Meu Site Nginx - Deploy Automático</title>
+  <style>
+    body { font-family: Arial; background: #f5f5f5; text-align: center; margin-top: 80px; }
+    h1 { color: #0077cc; }
+    p { color: #333; }
+  </style>
+</head>
+<body>
+  <h1>Deploy via Jenkins + Docker + ECR 🚀</h1>
+  <p>Este site foi atualizado em: <span id="date"></span></p>
+  <script>
+    document.getElementById('date').textContent = new Date().toLocaleString();
+  </script>
+</body>
+</html>

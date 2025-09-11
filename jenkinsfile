@@ -1,0 +1,26 @@
+pipeline {
+    agent any
+    environment {
+        DOCKERHUB_REPO = 'joaumgabrielss/nginx-web-site'
+        DOCKERHUB_USER = credentials('dockerhub-username') // Adicione no Jenkins
+        DOCKERHUB_PASS = credentials('dockerhub-password') // Adicione no Jenkins
+    }
+    stages {
+        stage('Checkout') {
+            steps { checkout scm }
+        }
+        stage('Build Docker') {
+            steps { sh 'docker build -t $DOCKERHUB_REPO .' }
+        }
+        stage('Login DockerHub') {
+            steps {
+                sh 'echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin'
+            }
+        }
+        stage('Push DockerHub') {
+            steps {
+                sh 'docker push $DOCKERHUB_REPO:latest'
+            }
+        }
+    }
+}
