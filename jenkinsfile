@@ -21,9 +21,10 @@ pipeline {
         stage('Test Docker Image') {
             steps {
                 sh '''
-                    docker run --rm -d -p 8082:80 --name test-nginx $DOCKERHUB_REPO
-                    sleep 10
-                    curl -f http://localhost:8082 || (docker logs test-nginx && docker stop test-nginx && exit 1)
+                    docker run --rm -d --name test-nginx $DOCKERHUB_REPO
+                    sleep 5
+                    CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' test-nginx)
+                    curl -f http://$CONTAINER_IP || (docker logs test-nginx && docker stop test-nginx && exit 1)
                     docker stop test-nginx
                 '''
             }
