@@ -2,8 +2,8 @@ pipeline {
     agent any
     environment {
         DOCKERHUB_REPO = 'joaumgabrielss/nginx-web-site'
-        
     }
+    
     stages {
         stage('Checkout') {
             steps { checkout scm }
