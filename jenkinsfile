@@ -18,6 +18,16 @@ pipeline {
                 }
             }
         }
+        stage('Test Docker Image') {
+            steps {
+                sh '''
+                    docker run --rm -d -p 8082:80 --name test-nginx $DOCKERHUB_REPO
+                    sleep 10
+                    curl -f http://localhost:8082 || (docker logs test-nginx && docker stop test-nginx && exit 1)
+                    docker stop test-nginx
+                '''
+            }
+        }
         stage('Push Docker Image') {
             steps {
                 sh 'docker push $DOCKERHUB_REPO'
