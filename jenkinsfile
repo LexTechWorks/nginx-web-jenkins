@@ -1,7 +1,10 @@
 pipeline {
     agent any
     environment {
-        DOCKERHUB_REPO = 'joaumgabrielss/nginx-web-site'
+        AWS_REGION = 'us-east-1'
+        ECR_REGISTRY = '833371734412.dkr.ecr.us-east-1.amazonaws.com'
+        ECR_REPOSITORY = 'nginx-web-site'
+        IMAGE_TAG = 'latest'
     }
     
     stages {
@@ -9,19 +12,29 @@ pipeline {
             steps { checkout scm }
         }
         stage('Build Docker') {
-            steps { sh 'docker build -t $DOCKERHUB_REPO .' }
+            steps { 
+                sh 'docker build -t $ECR_REPOSITORY:$IMAGE_TAG .'
+                sh 'docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG'
+            }
         }
-        stage('Login Docker Hub') {
+        stage('Login to AWS ECR') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
-                    sh 'echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin'
+                withCredentials([
+                    string(credentialsId: 'aws-access-key', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh '''
+                        export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+                        export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+                    '''
                 }
             }
         }
         stage('Test Docker Image') {
             steps {
                 sh '''
-                    docker run --rm -d --name test-nginx $DOCKERHUB_REPO
+                    docker run --rm -d --name test-nginx $ECR_REPOSITORY:$IMAGE_TAG
                     sleep 5
                     CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' test-nginx)
                     curl -f http://$CONTAINER_IP || (docker logs test-nginx && docker stop test-nginx && exit 1)
@@ -29,9 +42,9 @@ pipeline {
                 '''
             }
         }
-        stage('Push Docker Image') {
+        stage('Push to ECR') {
             steps {
-                sh 'docker push $DOCKERHUB_REPO'
+                sh 'docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG'
             }
         }
     }
@@ -41,6 +54,10 @@ pipeline {
         }
         failure {
             echo 'Pipeline falhou!'
+        }
+        always {
+            sh 'docker rmi $ECR_REPOSITORY:$IMAGE_TAG || true'
+            sh 'docker rmi $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG || true'
         }
     }
 }
