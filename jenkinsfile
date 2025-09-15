@@ -4,7 +4,7 @@ pipeline {
         AWS_REGION = 'us-east-1'
         ECR_REGISTRY = '833371734412.dkr.ecr.us-east-1.amazonaws.com'
         ECR_REPOSITORY = 'nginx-web-site'
-        IMAGE_TAG = 'latest'
+        IMAGE_TAG = 'v1'
     }
 
     stages {
