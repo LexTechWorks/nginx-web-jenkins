@@ -6,7 +6,7 @@ pipeline {
         AWS_ACCOUNT_ID = '833371734412'
         ECR_REGISTRY = '833371734412.dkr.ecr.us-east-1.amazonaws.com'
         ECR_REPOSITORY = 'nginx-web-site'
-        IMAGE_TAG = 'v1.1.0'
+        IMAGE_TAG = 'v1'
         CLUSTER_NAME = 'nginx-web-site-cluster'
         SERVICE_NAME = 'nginx-web-site-task-service-b2igefhw'
         TASK_FAMILY = 'nginx-web-site-task'
