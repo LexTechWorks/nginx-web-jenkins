@@ -46,6 +46,190 @@ pipeline {
                 sh 'docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG'
             }
         }
+        stage('Deploy Info') {
+            steps {
+                withCredentials([
+                    aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh '''
+                        echo "🚀 AUTOMATED DEPLOYMENT TO FARGATE"
+                        echo "===================================="
+                        echo ""
+                        echo "📦 New image pushed to ECR:"
+                        echo "   $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+                        echo ""
+                        echo "🏗️ Infrastructure (Manual - already created):"
+                        echo "   ✅ ECS Cluster: nginx-web-site-cluster"
+                        echo "   ✅ Task Definition: nginx-web-site-task"
+                        echo "   ✅ Security Group: nginx-web-site-sg (port 80)"
+                        echo "   ✅ ECS Service: nginx-web-site-task-service-b2igefhw"
+                        echo ""
+                        
+                        export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+                        export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+                        
+                        echo "🔄 Starting automated deployment..."
+                        
+                        # Variables
+                        CLUSTER_NAME="nginx-web-site-cluster"
+                        SERVICE_NAME="nginx-web-site-task-service-b2igefhw"
+                        TASK_FAMILY="nginx-web-site-task"
+                        
+                        # 1. Get current task definition
+                        echo "📋 Getting current task definition..."
+                        CURRENT_TASK_DEF=$(aws ecs describe-task-definition \
+                            --task-definition $TASK_FAMILY \
+                            --region $AWS_REGION \
+                            --query 'taskDefinition' \
+                            --output json)
+                        
+                        if [ $? -ne 0 ]; then
+                            echo "❌ Failed to get task definition"
+                            exit 1
+                        fi
+                        
+                        echo "✅ Current task definition retrieved"
+                        
+                        # 2. Update image in task definition
+                        echo "🔄 Creating new task definition with updated image..."
+                        NEW_TASK_DEFINITION=$(echo "$CURRENT_TASK_DEF" | jq --arg IMAGE "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+                            '.containerDefinitions[0].image = $IMAGE | 
+                             del(.taskDefinitionArn) | 
+                             del(.revision) | 
+                             del(.status) | 
+                             del(.requiresAttributes) | 
+                             del(.placementConstraints) | 
+                             del(.compatibilities) | 
+                             del(.registeredAt) | 
+                             del(.registeredBy)')
+                        
+                        echo "$NEW_TASK_DEFINITION" > new-task-definition.json
+                        
+                        # 3. Register new task definition
+                        echo "📝 Registering new task definition..."
+                        NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+                            --cli-input-json file://new-task-definition.json \
+                            --region $AWS_REGION \
+                            --query 'taskDefinition.taskDefinitionArn' \
+                            --output text)
+                        
+                        if [ $? -ne 0 ]; then
+                            echo "❌ Failed to register new task definition"
+                            exit 1
+                        fi
+                        
+                        echo "✅ New task definition registered: $NEW_TASK_DEF_ARN"
+                        
+                        # 4. Update ECS service
+                        echo "🚀 Updating ECS service with new task definition..."
+                        aws ecs update-service \
+                            --cluster $CLUSTER_NAME \
+                            --service $SERVICE_NAME \
+                            --task-definition "$NEW_TASK_DEF_ARN" \
+                            --region $AWS_REGION > /dev/null
+                        
+                        if [ $? -ne 0 ]; then
+                            echo "❌ Failed to update ECS service"
+                            exit 1
+                        fi
+                        
+                        echo "✅ ECS service update initiated"
+                        
+                        # 5. Wait for deployment to stabilize
+                        echo "⏳ Waiting for deployment to complete (this may take 3-5 minutes)..."
+                        aws ecs wait services-stable \
+                            --cluster $CLUSTER_NAME \
+                            --services $SERVICE_NAME \
+                            --region $AWS_REGION
+                        
+                        if [ $? -eq 0 ]; then
+                            echo "✅ Deployment completed successfully!"
+                        else
+                            echo "⚠️ Deployment timeout - check ECS console for status"
+                        fi
+                        
+                        # 6. Get deployment status and info
+                        echo ""
+                        echo "📊 Deployment Status:"
+                        
+                        # Get service status
+                        SERVICE_STATUS=$(aws ecs describe-services \
+                            --cluster $CLUSTER_NAME \
+                            --services $SERVICE_NAME \
+                            --region $AWS_REGION \
+                            --query 'services[0]' \
+                            --output json)
+                        
+                        RUNNING_COUNT=$(echo "$SERVICE_STATUS" | jq -r '.runningCount')
+                        DESIRED_COUNT=$(echo "$SERVICE_STATUS" | jq -r '.desiredCount')
+                        DEPLOYMENT_STATUS=$(echo "$SERVICE_STATUS" | jq -r '.deployments[0].status')
+                        
+                        echo "   Running tasks: $RUNNING_COUNT/$DESIRED_COUNT"
+                        echo "   Deployment status: $DEPLOYMENT_STATUS"
+                        
+                        # 7. Get public IP
+                        echo ""
+                        echo "🔍 Getting application access information..."
+                        
+                        TASK_ARN=$(aws ecs list-tasks \
+                            --cluster $CLUSTER_NAME \
+                            --service-name $SERVICE_NAME \
+                            --region $AWS_REGION \
+                            --query 'taskArns[0]' \
+                            --output text 2>/dev/null)
+                        
+                        if [ "$TASK_ARN" != "None" ] && [ ! -z "$TASK_ARN" ]; then
+                            ENI_ID=$(aws ecs describe-tasks \
+                                --cluster $CLUSTER_NAME \
+                                --tasks "$TASK_ARN" \
+                                --region $AWS_REGION \
+                                --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' \
+                                --output text 2>/dev/null)
+                            
+                            if [ ! -z "$ENI_ID" ] && [ "$ENI_ID" != "None" ]; then
+                                PUBLIC_IP=$(aws ec2 describe-network-interfaces \
+                                    --network-interface-ids "$ENI_ID" \
+                                    --region $AWS_REGION \
+                                    --query 'NetworkInterfaces[0].Association.PublicIp' \
+                                    --output text 2>/dev/null)
+                                
+                                if [ ! -z "$PUBLIC_IP" ] && [ "$PUBLIC_IP" != "None" ]; then
+                                    echo "🌐 Application URL: http://$PUBLIC_IP"
+                                    echo ""
+                                    
+                                    # 8. Health check
+                                    echo "🏥 Performing health check..."
+                                    sleep 10  # Wait for app to be ready
+                                    
+                                    if curl -f --connect-timeout 10 "http://$PUBLIC_IP" > /dev/null 2>&1; then
+                                        echo "✅ Application is healthy and responding!"
+                                        echo "🎉 Deployment successful!"
+                                    else
+                                        echo "⚠️ Application not responding yet (may still be starting)"
+                                        echo "🔗 Please check: http://$PUBLIC_IP"
+                                    fi
+                                else
+                                    echo "⚠️ Could not get public IP"
+                                fi
+                            else
+                                echo "⚠️ Could not get network interface"
+                            fi
+                        else
+                            echo "⚠️ No running tasks found"
+                        fi
+                        
+                        echo ""
+                        echo "📋 Summary:"
+                        echo "   Image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+                        echo "   Task Definition: $NEW_TASK_DEF_ARN"
+                        echo "   Service: $SERVICE_NAME"
+                        echo "   Port: 80"
+                        echo ""
+                        echo "✅ Automated deployment completed!"
+                    '''
+                }
+            }
+        }
     }
     post {
         success {
