@@ -15,11 +15,10 @@ pipeline {
     stages {
         stage('Build & Push') {
             steps {
-                // Build da imagem
+                
                 sh 'docker build -t ${ECR_REPOSITORY}:${IMAGE_TAG} .'
                 sh 'docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}'
                 
-                // Login e push para ECR
                 withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh '''
                         aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
@@ -83,17 +82,43 @@ pipeline {
                         
                         echo "🎉 Deploy concluído com sucesso!"
                         
-                        # Mostrar URL da aplicação
-                        TASK_ARN=$(aws ecs list-tasks --cluster ${CLUSTER_NAME} --service-name ${SERVICE_NAME} --region ${AWS_REGION} --query 'taskArns[0]' --output text)
-                        if [ "$TASK_ARN" != "None" ]; then
-                            ENI_ID=$(aws ecs describe-tasks --cluster ${CLUSTER_NAME} --tasks "$TASK_ARN" --region ${AWS_REGION} --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text)
-                            if [ ! -z "$ENI_ID" ]; then
-                                PUBLIC_IP=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI_ID" --region ${AWS_REGION} --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
-                                if [ "$PUBLIC_IP" != "None" ]; then
+                        # Mostrar URL da aplicação com tratamento de erro melhorado
+                        echo "🔍 Buscando informações da aplicação..."
+                        sleep 10  # Aguardar task ficar completamente ativa
+                        
+                        TASK_ARN=$(aws ecs list-tasks --cluster ${CLUSTER_NAME} --service-name ${SERVICE_NAME} --region ${AWS_REGION} --query 'taskArns[0]' --output text 2>/dev/null)
+                        
+                        if [ "$TASK_ARN" != "None" ] && [ ! -z "$TASK_ARN" ]; then
+                            echo "✅ Task encontrada: $TASK_ARN"
+                            
+                            # Buscar ENI com tratamento de erro
+                            ENI_ID=$(aws ecs describe-tasks --cluster ${CLUSTER_NAME} --tasks "$TASK_ARN" --region ${AWS_REGION} --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text 2>/dev/null || echo "")
+                            
+                            if [ ! -z "$ENI_ID" ] && [ "$ENI_ID" != "None" ]; then
+                                echo "✅ Network interface encontrada: $ENI_ID"
+                                
+                                # Buscar IP público com tratamento de erro
+                                PUBLIC_IP=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI_ID" --region ${AWS_REGION} --query 'NetworkInterfaces[0].Association.PublicIp' --output text 2>/dev/null || echo "")
+                                
+                                if [ ! -z "$PUBLIC_IP" ] && [ "$PUBLIC_IP" != "None" ] && [ "$PUBLIC_IP" != "null" ]; then
                                     echo "🌐 Aplicação disponível em: http://$PUBLIC_IP"
+                                    echo "✅ Deploy finalizado com sucesso!"
+                                else
+                                    echo "⚠️ IP público não disponível ainda"
+                                    echo "📋 Verifique o console AWS ECS para obter o IP"
                                 fi
+                            else
+                                echo "⚠️ Network interface não encontrada ou ainda sendo configurada"
+                                echo "📋 Verifique o console AWS ECS - a aplicação pode estar inicializando"
                             fi
+                        else
+                            echo "⚠️ Nenhuma task ativa encontrada"
+                            echo "📋 Verifique o console AWS ECS para status das tasks"
                         fi
+                        
+                        echo ""
+                        echo "📊 Status do serviço:"
+                        aws ecs describe-services --cluster ${CLUSTER_NAME} --services ${SERVICE_NAME} --region ${AWS_REGION} --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' --output table || echo "Erro ao obter status"
                     '''
                 }
             }
