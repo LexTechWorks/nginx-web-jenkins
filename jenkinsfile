@@ -36,6 +36,46 @@ pipeline {
             }
         }
         
+        stage('SonarQube Analysis') {
+            steps {
+                script {
+                    def scannerHome = tool 'SonarQube Scanner'
+                    withSonarQubeEnv('SonarQube') {
+                        sh '''
+                            echo "🔍 Iniciando análise de qualidade de código..."
+                            ${scannerHome}/bin/sonar-scanner \
+                                -Dsonar.projectKey=nginx-web-site \
+                                -Dsonar.projectName="Nginx Web Site" \
+                                -Dsonar.projectVersion=1.0 \
+                                -Dsonar.sources=. \
+                                -Dsonar.exclusions="**/node_modules/**,**/target/**,**/.git/**,**/docker-compose.yml" \
+                                -Dsonar.inclusions="**/*.html,**/*.css,**/*.js,**/*.sh,**/Dockerfile,**/jenkinsfile" \
+                                -Dsonar.sourceEncoding=UTF-8
+                            echo "✅ Análise SonarQube concluída!"
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Quality Gate') {
+            steps {
+                script {
+                    echo "⏳ Aguardando resultado do Quality Gate..."
+                    timeout(time: 5, unit: 'MINUTES') {
+                        def qg = waitForQualityGate()
+                        if (qg.status != 'OK') {
+                            echo "❌ Quality Gate falhou: ${qg.status}"
+                            echo "⚠️ Abortando deploy devido a problemas de qualidade de código"
+                            error "Pipeline abortada devido ao Quality Gate: ${qg.status}"
+                        } else {
+                            echo "✅ Quality Gate passou! Prosseguindo com deploy..."
+                        }
+                    }
+                }
+            }
+        }
+        
         stage('Push to ECR') {
             steps {
                 withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
