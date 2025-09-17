@@ -39,31 +39,17 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 script {
+                    def scannerHome = tool 'SonarQube Scanner'
                     withSonarQubeEnv('SonarQube') {
                         sh """
                             echo "🔍 Iniciando análise de qualidade de código..."
-                            echo "Verificando se sonar-scanner está disponível..."
-                            
-                            # Tentar encontrar sonar-scanner em locais comuns
-                            if [ -f "/opt/sonar-scanner/bin/sonar-scanner" ]; then
-                                SCANNER_PATH="/opt/sonar-scanner/bin/sonar-scanner"
-                            elif [ -f "/usr/local/bin/sonar-scanner" ]; then
-                                SCANNER_PATH="/usr/local/bin/sonar-scanner"
-                            else
-                                echo "⚠️ SonarQube Scanner não encontrado, baixando..."
-                                wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux-x64.zip
-                                unzip -q sonar-scanner-cli-6.2.1.4610-linux-x64.zip
-                                SCANNER_PATH="./sonar-scanner-6.2.1.4610-linux-x64/bin/sonar-scanner"
-                            fi
-                            
-                            echo "📍 Usando scanner: \$SCANNER_PATH"
-                            
-                            \$SCANNER_PATH \\
+                            echo "📍 Scanner path: ${scannerHome}"
+                            ${scannerHome}/bin/sonar-scanner \\
                                 -Dsonar.projectKey=nginx-web-site \\
                                 -Dsonar.projectName="Nginx Web Site" \\
                                 -Dsonar.projectVersion=1.0 \\
                                 -Dsonar.sources=. \\
-                                -Dsonar.exclusions="**/node_modules/**,**/target/**,**/.git/**,**/docker-compose.yml,**/sonar-scanner-*/**" \\
+                                -Dsonar.exclusions="**/node_modules/**,**/target/**,**/.git/**,**/docker-compose.yml" \\
                                 -Dsonar.inclusions="**/*.html,**/*.css,**/*.js,**/*.sh,**/Dockerfile,**/jenkinsfile" \\
                                 -Dsonar.sourceEncoding=UTF-8
                             echo "✅ Análise SonarQube concluída!"
