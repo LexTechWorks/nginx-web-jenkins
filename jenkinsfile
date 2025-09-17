@@ -43,7 +43,7 @@ pipeline {
                     withSonarQubeEnv('SonarQube') {
                         sh '''
                             echo "🔍 Iniciando análise de qualidade de código..."
-                            ${scannerHome}/bin/sonar-scanner \
+                            ${SONAR_SCANNER_HOME}/bin/sonar-scanner \
                                 -Dsonar.projectKey=nginx-web-site \
                                 -Dsonar.projectName="Nginx Web Site" \
                                 -Dsonar.projectVersion=1.0 \
