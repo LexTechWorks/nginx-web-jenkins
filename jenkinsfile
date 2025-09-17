@@ -41,18 +41,19 @@ pipeline {
                 script {
                     def scannerHome = tool 'SonarQube Scanner'
                     withSonarQubeEnv('SonarQube') {
-                        sh '''
+                        sh """
                             echo "🔍 Iniciando análise de qualidade de código..."
-                            ${SONAR_SCANNER_HOME}/bin/sonar-scanner \
-                                -Dsonar.projectKey=nginx-web-site \
-                                -Dsonar.projectName="Nginx Web Site" \
-                                -Dsonar.projectVersion=1.0 \
-                                -Dsonar.sources=. \
-                                -Dsonar.exclusions="**/node_modules/**,**/target/**,**/.git/**,**/docker-compose.yml" \
-                                -Dsonar.inclusions="**/*.html,**/*.css,**/*.js,**/*.sh,**/Dockerfile,**/jenkinsfile" \
+                            echo "Scanner path: ${scannerHome}"
+                            ${scannerHome}/bin/sonar-scanner \\
+                                -Dsonar.projectKey=nginx-web-site \\
+                                -Dsonar.projectName="Nginx Web Site" \\
+                                -Dsonar.projectVersion=1.0 \\
+                                -Dsonar.sources=. \\
+                                -Dsonar.exclusions="**/node_modules/**,**/target/**,**/.git/**,**/docker-compose.yml" \\
+                                -Dsonar.inclusions="**/*.html,**/*.css,**/*.js,**/*.sh,**/Dockerfile,**/jenkinsfile" \\
                                 -Dsonar.sourceEncoding=UTF-8
                             echo "✅ Análise SonarQube concluída!"
-                        '''
+                        """
                     }
                 }
             }
