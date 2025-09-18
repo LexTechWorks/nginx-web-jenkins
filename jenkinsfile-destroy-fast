@@ -1,0 +1,66 @@
+pipeline {
+    agent any
+    
+    environment {
+        AWS_REGION = 'us-east-1'
+        ECR_REPOSITORY = 'nginx-web-site'
+        
+        // Terraform variables
+        TF_VAR_aws_region = 'us-east-1'
+        TF_VAR_environment = 'dev'
+        TF_VAR_project_name = 'nginx-web-site'
+        TF_VAR_aws_account_id = '833371734412'
+    }
+
+    stages {
+        stage('🚨 DESTRUIÇÃO RÁPIDA') {
+            steps {
+                script {
+                    echo "⚡ MODO DESTRUIÇÃO RÁPIDA"
+                    echo "⚠️ Este pipeline remove TUDO sem confirmações extras"
+                    
+                    input message: 'DESTRUIR TUDO AGORA?', 
+                          ok: '💥 SIM, DESTRUIR',
+                          submitterParameter: 'DESTROYER'
+                    
+                    echo "💀 Autorizado por: ${env.DESTROYER}"
+                }
+            }
+        }
+        
+        stage('Limpar ECR') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    sh '''
+                        echo "🗑️ Removendo imagens ECR..."
+                        aws ecr list-images --repository-name ${ECR_REPOSITORY} --region ${AWS_REGION} --query 'imageIds[*]' --output json > images.json || echo "Repo não existe"
+                        if [ -s images.json ] && [ "$(cat images.json)" != "[]" ]; then
+                            aws ecr batch-delete-image --repository-name ${ECR_REPOSITORY} --region ${AWS_REGION} --image-ids file://images.json
+                        fi
+                        rm -f images.json
+                    '''
+                }
+            }
+        }
+        
+        stage('Terraform Destroy') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    dir('terraform') {
+                        sh '''
+                            echo "💥 Destruindo infraestrutura..."
+                            terraform init
+                            terraform destroy --auto-approve
+                            echo "✅ Destruição completa!"
+                        '''
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        success { echo "🎉 DESTRUÍDO COM SUCESSO!" }
+        failure { echo "❌ Falha na destruição - verifique manualmente" }
+    }
+}

@@ -1,0 +1,256 @@
+pipeline {
+    agent any
+    
+    environment {
+        AWS_REGION = 'us-east-1'
+        AWS_ACCOUNT_ID = '833371734412'
+        ECR_REGISTRY = '833371734412.dkr.ecr.us-east-1.amazonaws.com'
+        ECR_REPOSITORY = 'nginx-web-site'
+        
+        // Terraform variables
+        TF_VAR_aws_region = 'us-east-1'
+        TF_VAR_environment = 'dev'
+        TF_VAR_project_name = 'nginx-web-site'
+        TF_VAR_aws_account_id = '833371734412'
+    }
+
+    stages {
+        stage('⚠️ CONFIRMAÇÃO DE DESTRUIÇÃO') {
+            steps {
+                script {
+                    echo "🚨 ATENÇÃO: Este pipeline irá DESTRUIR toda a infraestrutura!"
+                    echo "📋 Recursos que serão removidos:"
+                    echo "   • ECS Cluster: nginx-web-site-cluster"
+                    echo "   • ECS Service: nginx-web-site-task-service-b2igefhw"
+                    echo "   • ECR Repository: nginx-web-site (e todas as imagens)"
+                    echo "   • IAM Roles: ecsTaskExecutionRole, ecsTaskRole"
+                    echo "   • CloudWatch Logs: /ecs/nginx-web-site"
+                    echo ""
+                    echo "⚠️  ESTA AÇÃO É IRREVERSÍVEL!"
+                    echo "⚠️  TODOS OS DADOS SERÃO PERDIDOS!"
+                    echo ""
+                    
+                    def userInput = input(
+                        message: 'Tem certeza que deseja DESTRUIR toda a infraestrutura?',
+                        parameters: [
+                            choice(
+                                name: 'CONFIRMACAO',
+                                choices: ['NÃO - Cancelar', 'SIM - Destruir tudo'],
+                                description: 'Confirme sua escolha'
+                            ),
+                            string(
+                                name: 'CONFIRM_TEXT',
+                                defaultValue: '',
+                                description: 'Digite "DESTRUIR" para confirmar (case sensitive)'
+                            )
+                        ],
+                        submitterParameter: 'APPROVER'
+                    )
+                    
+                    if (userInput.CONFIRMACAO != 'SIM - Destruir tudo') {
+                        error "❌ Destruição cancelada pelo usuário"
+                    }
+                    
+                    if (userInput.CONFIRM_TEXT != 'DESTRUIR') {
+                        error "❌ Texto de confirmação incorreto. Digite exatamente: DESTRUIR"
+                    }
+                    
+                    echo "✅ Confirmação recebida de: ${userInput.APPROVER}"
+                    echo "🚀 Iniciando processo de destruição..."
+                }
+            }
+        }
+        
+        stage('Checkout') {
+            steps {
+                echo "📥 Verificando arquivos do projeto..."
+                sh 'ls -la'
+                sh 'ls -la terraform/ || echo "Diretório terraform não encontrado"'
+            }
+        }
+        
+        stage('Terraform Init') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    dir('terraform') {
+                        sh '''
+                            echo "🔧 Inicializando Terraform..."
+                            terraform --version
+                            terraform init
+                            echo "✅ Terraform inicializado!"
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Verificar Estado Atual') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    dir('terraform') {
+                        sh '''
+                            echo "🔍 Verificando estado atual da infraestrutura..."
+                            terraform refresh
+                            echo ""
+                            echo "📊 Recursos atuais:"
+                            terraform show || echo "Nenhum recurso encontrado"
+                            echo ""
+                            echo "📋 Outputs atuais:"
+                            terraform output || echo "Nenhum output encontrado"
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Terraform Destroy Plan') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    dir('terraform') {
+                        sh '''
+                            echo "📋 Criando plano de destruição..."
+                            terraform plan -destroy -out=destroy.tfplan
+                            echo "✅ Plano de destruição criado!"
+                            echo ""
+                            echo "📝 Recursos que serão destruídos estão listados acima"
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('🚨 ÚLTIMA CONFIRMAÇÃO') {
+            steps {
+                script {
+                    echo "🛑 ÚLTIMA OPORTUNIDADE DE CANCELAR!"
+                    echo "⚠️  Após este ponto, a destruição será executada automaticamente"
+                    echo ""
+                    
+                    input message: 'CONFIRMAÇÃO FINAL: Executar a destruição agora?', 
+                          ok: '💀 DESTRUIR AGORA',
+                          submitterParameter: 'FINAL_APPROVER'
+                    
+                    echo "💀 Confirmação final recebida de: ${env.FINAL_APPROVER}"
+                    echo "🚀 Iniciando destruição..."
+                }
+            }
+        }
+        
+        stage('Limpar ECR Repository') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    sh '''
+                        echo "🗑️ Limpando imagens do ECR..."
+                        
+                        # Verificar se o repositório existe
+                        if aws ecr describe-repositories --repository-names ${ECR_REPOSITORY} --region ${AWS_REGION} >/dev/null 2>&1; then
+                            echo "📦 Repositório ECR encontrado, listando imagens..."
+                            
+                            # Listar e deletar todas as imagens
+                            IMAGE_IDS=$(aws ecr list-images --repository-name ${ECR_REPOSITORY} --region ${AWS_REGION} --query 'imageIds[*]' --output json)
+                            
+                            if [ "$IMAGE_IDS" != "[]" ]; then
+                                echo "🗂️ Imagens encontradas, removendo..."
+                                aws ecr batch-delete-image --repository-name ${ECR_REPOSITORY} --region ${AWS_REGION} --image-ids "$IMAGE_IDS"
+                                echo "✅ Imagens removidas do ECR"
+                            else
+                                echo "📭 Nenhuma imagem encontrada no repositório"
+                            fi
+                        else
+                            echo "📭 Repositório ECR não encontrado ou já removido"
+                        fi
+                    '''
+                }
+            }
+        }
+        
+        stage('Terraform Destroy') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    dir('terraform') {
+                        sh '''
+                            echo "💥 Executando destruição da infraestrutura..."
+                            echo "⏳ Este processo pode demorar alguns minutos..."
+                            
+                            terraform apply destroy.tfplan
+                            
+                            echo "✅ Destruição concluída!"
+                            echo ""
+                            echo "🔍 Verificando se ainda existem recursos..."
+                            terraform show || echo "✅ Nenhum recurso restante - destruição completa!"
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Verificação Final') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    sh '''
+                        echo "🔍 Verificação final dos recursos AWS..."
+                        echo ""
+                        
+                        echo "📋 Verificando ECS Clusters:"
+                        aws ecs list-clusters --region ${AWS_REGION} --query 'clusterArns[?contains(@, `nginx-web-site`)]' || echo "Nenhum cluster encontrado"
+                        echo ""
+                        
+                        echo "📋 Verificando ECR Repositories:"
+                        aws ecr describe-repositories --repository-names ${ECR_REPOSITORY} --region ${AWS_REGION} 2>/dev/null || echo "✅ Repositório ECR removido"
+                        echo ""
+                        
+                        echo "📋 Verificando IAM Roles:"
+                        aws iam get-role --role-name ecsTaskExecutionRole 2>/dev/null || echo "✅ Role ecsTaskExecutionRole removido"
+                        aws iam get-role --role-name ecsTaskRole 2>/dev/null || echo "✅ Role ecsTaskRole removido"
+                        echo ""
+                        
+                        echo "📋 Verificando CloudWatch Log Groups:"
+                        aws logs describe-log-groups --log-group-name-prefix "/ecs/nginx-web-site" --region ${AWS_REGION} --query 'logGroups[*].logGroupName' 2>/dev/null || echo "✅ Log groups removidos"
+                        echo ""
+                        
+                        echo "🎉 DESTRUIÇÃO COMPLETA!"
+                        echo "✅ Todos os recursos foram removidos com sucesso"
+                        echo "💰 Custos AWS interrompidos"
+                        echo ""
+                        echo "📝 Para recriar a infraestrutura, execute o pipeline principal"
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        success { 
+            echo "🎉 DESTRUIÇÃO EXECUTADA COM SUCESSO!"
+            echo "✅ Todos os recursos AWS foram removidos"
+            echo "💰 Custos interrompidos"
+            echo ""
+            echo "📋 Resumo:"
+            echo "   • ECS Cluster: ❌ Removido"
+            echo "   • ECS Service: ❌ Removido" 
+            echo "   • ECR Repository: ❌ Removido"
+            echo "   • IAM Roles: ❌ Removidos"
+            echo "   • CloudWatch Logs: ❌ Removidos"
+            echo ""
+            echo "🔄 Para recriar, execute o pipeline de deploy principal"
+        }
+        failure { 
+            echo "❌ FALHA NA DESTRUIÇÃO!"
+            echo "⚠️  Alguns recursos podem ainda existir na AWS"
+            echo "🔍 Verifique manualmente no console AWS:"
+            echo "   • ECS: https://console.aws.amazon.com/ecs/"
+            echo "   • ECR: https://console.aws.amazon.com/ecr/"
+            echo "   • IAM: https://console.aws.amazon.com/iam/"
+            echo "   • CloudWatch: https://console.aws.amazon.com/cloudwatch/"
+            echo ""
+            echo "💡 Execute o pipeline novamente ou remova manualmente"
+        }
+        cleanup {
+            sh '''
+                echo "🧹 Limpando arquivos temporários..."
+                rm -f terraform/destroy.tfplan || true
+                echo "✅ Limpeza concluída"
+            '''
+        }
+    }
+}
