@@ -1,4 +1,3 @@
-# ECR Repository
 resource "aws_ecr_repository" "nginx-web-site" {
   name                 = var.ecr_repository
   image_tag_mutability = "MUTABLE"
@@ -16,7 +15,6 @@ resource "aws_ecr_repository" "nginx-web-site" {
   }
 }
 
-# ECR Repository Policy
 resource "aws_ecr_repository_policy" "nginx_web_site_policy" {
   repository = aws_ecr_repository.nginx-web-site.name
 

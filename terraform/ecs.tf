@@ -1,4 +1,3 @@
-# CloudWatch Log Group
 resource "aws_cloudwatch_log_group" "nginx_logs" {
   name              = "/ecs/${var.project_name}"
   retention_in_days = 30
@@ -8,7 +7,6 @@ resource "aws_cloudwatch_log_group" "nginx_logs" {
   }
 }
 
-# ECS Cluster
 resource "aws_ecs_cluster" "nginx_cluster" {
   name = var.cluster_name
 
@@ -26,7 +24,6 @@ resource "aws_ecs_cluster" "nginx_cluster" {
   }
 }
 
-# ECS Task Definition
 resource "aws_ecs_task_definition" "nginx_task" {
   family                   = var.task_family
   requires_compatibilities = ["FARGATE"]
@@ -77,7 +74,6 @@ resource "aws_ecs_task_definition" "nginx_task" {
   }
 }
 
-# ECS Service
 resource "aws_ecs_service" "nginx_service" {
   name            = var.service_name
   cluster         = aws_ecs_cluster.nginx_cluster.id

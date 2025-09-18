@@ -1,5 +1,3 @@
-# Outputs for important resource information
-
 output "ecr_repository_url" {
   description = "ECR repository URL"
   value       = aws_ecr_repository.nginx-web-site.repository_url
@@ -45,7 +43,6 @@ output "iam_task_role_arn" {
   value       = aws_iam_role.ecs_task_role.arn
 }
 
-# Pipeline VPC Outputs
 output "pipeline_vpc_id" {
   description = "Pipeline VPC ID"
   value       = data.aws_vpc.pipeline_vpc.id

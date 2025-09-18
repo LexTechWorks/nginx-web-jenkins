@@ -11,7 +11,6 @@ pipeline {
         SERVICE_NAME = 'nginx-web-site-task-service-b2igefhw'
         TASK_FAMILY = 'nginx-web-site-task'
         
-        // Terraform variables
         TF_VAR_aws_region = 'us-east-1'
         TF_VAR_environment = 'dev'
         TF_VAR_project_name = 'nginx-web-site'
@@ -21,10 +20,10 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo "📥 Código já está no workspace"
-                echo "📁 Listando arquivos do projeto..."
+                echo "Code already in workspace"
+                echo "Listing project files..."
                 sh 'ls -la'
-                sh 'ls -la terraform/ || echo "Diretório terraform não encontrado"'
+                sh 'ls -la terraform/ || echo "Terraform directory not found"'
             }
         }
         
@@ -33,10 +32,10 @@ pipeline {
                 withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     dir('terraform') {
                         sh '''
-                            echo "🔧 Inicializando Terraform..."
+                            echo "Initializing Terraform..."
                             terraform --version
                             terraform init
-                            echo "✅ Terraform inicializado!"
+                            echo "Terraform initialized!"
                         '''
                     }
                 }
@@ -48,9 +47,9 @@ pipeline {
                 withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     dir('terraform') {
                         sh '''
-                            echo "📋 Executando Terraform Plan..."
+                            echo "Running Terraform Plan..."
                             terraform plan -out=tfplan
-                            echo "✅ Terraform Plan concluído!"
+                            echo "Terraform Plan completed!"
                         '''
                     }
                 }
@@ -60,11 +59,11 @@ pipeline {
         stage('Terraform Apply - Approval') {
             steps {
                 script {
-                    echo "⏸️ Aguardando aprovação para aplicar mudanças na infraestrutura..."
-                    input message: 'Aplicar mudanças do Terraform na infraestrutura AWS?', 
-                          ok: 'Aplicar',
+                    echo "Waiting for approval to apply infrastructure changes..."
+                    input message: 'Apply Terraform changes to AWS infrastructure?', 
+                          ok: 'Apply',
                           submitterParameter: 'APPROVER'
-                    echo "✅ Aprovação recebida de: ${env.APPROVER}"
+                    echo "Approval received from: ${env.APPROVER}"
                 }
             }
         }
@@ -74,11 +73,11 @@ pipeline {
                 withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     dir('terraform') {
                         sh '''
-                            echo "🚀 Aplicando mudanças do Terraform..."
+                            echo "Applying Terraform changes..."
                             terraform apply tfplan
-                            echo "✅ Infraestrutura atualizada!"
+                            echo "Infrastructure updated!"
                             
-                            echo "📊 Recursos criados/atualizados:"
+                            echo "Created/updated resources:"
                             terraform output
                         '''
                     }
@@ -90,21 +89,21 @@ pipeline {
             steps {
                 sh 'docker build -t ${ECR_REPOSITORY}:${IMAGE_TAG} .'
                 sh 'docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}'
-                echo "✅ Imagem Docker criada"
+                echo "Docker image created"
             }
         }
         
         stage('Test Docker Image') {
             steps {
                 sh '''
-                    echo "🧪 Testando imagem Docker..."
+                    echo "Testing Docker image..."
                     docker run --rm -d --name test-nginx ${ECR_REPOSITORY}:${IMAGE_TAG}
                     sleep 5
                     CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' test-nginx)
-                    echo "🔍 Testando container no IP: $CONTAINER_IP"
+                    echo "Testing container at IP: $CONTAINER_IP"
                     curl -f http://$CONTAINER_IP || (docker logs test-nginx && docker stop test-nginx && exit 1)
                     docker stop test-nginx
-                    echo "✅ Teste da imagem passou!"
+                    echo "Image test passed!"
                 '''
             }
         }
@@ -115,8 +114,8 @@ pipeline {
                     def scannerHome = tool 'SonarQube Scanner'
                     withSonarQubeEnv('SonarQube') {
                         sh """
-                            echo "🔍 Iniciando análise de qualidade de código..."
-                            echo "📍 Scanner path: ${scannerHome}"
+                            echo "Starting code quality analysis..."
+                            echo "Scanner path: ${scannerHome}"
                             ${scannerHome}/bin/sonar-scanner \\
                                 -Dsonar.projectKey=nginx-web-site \\
                                 -Dsonar.projectName="Nginx Web Site" \\
@@ -125,7 +124,7 @@ pipeline {
                                 -Dsonar.exclusions="**/node_modules/**,**/target/**,**/.git/**,**/docker-compose.yml,**/terraform/.terraform/**,**/*.tfstate*,**/*.tfplan" \\
                                 -Dsonar.inclusions="**/*.html,**/*.css,**/*.js,**/*.sh,**/Dockerfile,**/jenkinsfile,**/*.tf" \\
                                 -Dsonar.sourceEncoding=UTF-8
-                            echo "✅ Análise SonarQube concluída!"
+                            echo "SonarQube analysis completed!"
                         """
                     }
                 }
@@ -135,15 +134,15 @@ pipeline {
         stage('Quality Gate') {
             steps {
                 script {
-                    echo "⏳ Aguardando resultado do Quality Gate..."
+                    echo "Waiting for Quality Gate result..."
                     timeout(time: 10, unit: 'MINUTES') {
                         def qg = waitForQualityGate()
                         if (qg.status != 'OK') {
-                            echo "❌ Quality Gate falhou: ${qg.status}"
-                            echo "⚠️ Abortando deploy devido a problemas de qualidade de código"
-                            error "Pipeline abortada devido ao Quality Gate: ${qg.status}"
+                            echo "Quality Gate failed: ${qg.status}"
+                            echo "Aborting deploy due to code quality issues"
+                            error "Pipeline aborted due to Quality Gate: ${qg.status}"
                         } else {
-                            echo "✅ Quality Gate passou! Prosseguindo com deploy..."
+                            echo "Quality Gate passed! Proceeding with deploy..."
                         }
                     }
                 }
@@ -154,11 +153,11 @@ pipeline {
             steps {
                 withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh '''
-                        echo "🔑 Fazendo login no ECR..."
+                        echo "Logging into ECR..."
                         aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                        echo "📤 Enviando imagem para ECR..."
+                        echo "Pushing image to ECR..."
                         docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
-                        echo "✅ Imagem enviada para ECR"
+                        echo "Image pushed to ECR"
                     '''
                 }
             }
@@ -168,9 +167,8 @@ pipeline {
             steps {
                 withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh '''
-                        echo "🚀 Atualizando aplicação no Fargate..."
+                        echo "Updating application on Fargate..."
                         
-                        # Criar nova task definition com a nova imagem
                         NEW_TASK_DEF=$(aws ecs register-task-definition \
                             --family ${TASK_FAMILY} \
                             --network-mode awsvpc \
@@ -198,62 +196,57 @@ pipeline {
                             --query 'taskDefinition.taskDefinitionArn' \
                             --output text)
                         
-                        echo "📝 Nova task definition: $NEW_TASK_DEF"
+                        echo "New task definition: $NEW_TASK_DEF"
                         
-                        # Atualizar o serviço
                         aws ecs update-service \
                             --cluster ${CLUSTER_NAME} \
                             --service ${SERVICE_NAME} \
                             --task-definition "$NEW_TASK_DEF" \
                             --region ${AWS_REGION}
                         
-                        echo "✅ Serviço atualizado! Aguardando deploy..."
+                        echo "Service updated! Waiting for deployment..."
                         
-                        # Aguardar deploy completar
                         aws ecs wait services-stable \
                             --cluster ${CLUSTER_NAME} \
                             --services ${SERVICE_NAME} \
                             --region ${AWS_REGION}
                         
-                        echo "🎉 Deploy concluído com sucesso!"
+                        echo "Deploy completed successfully!"
                         
-                        # Mostrar URL da aplicação com tratamento de erro melhorado
-                        echo "🔍 Buscando informações da aplicação..."
-                        sleep 10  # Aguardar task ficar completamente ativa
+                        echo "Searching for application information..."
+                        sleep 10
                         
                         TASK_ARN=$(aws ecs list-tasks --cluster ${CLUSTER_NAME} --service-name ${SERVICE_NAME} --region ${AWS_REGION} --query 'taskArns[0]' --output text 2>/dev/null)
                         
                         if [ "$TASK_ARN" != "None" ] && [ ! -z "$TASK_ARN" ]; then
-                            echo "✅ Task encontrada: $TASK_ARN"
+                            echo "Task found: $TASK_ARN"
                             
-                            # Buscar ENI com tratamento de erro
                             ENI_ID=$(aws ecs describe-tasks --cluster ${CLUSTER_NAME} --tasks "$TASK_ARN" --region ${AWS_REGION} --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text 2>/dev/null || echo "")
                             
                             if [ ! -z "$ENI_ID" ] && [ "$ENI_ID" != "None" ]; then
-                                echo "✅ Network interface encontrada: $ENI_ID"
+                                echo "Network interface found: $ENI_ID"
                                 
-                                # Buscar IP público com tratamento de erro
                                 PUBLIC_IP=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI_ID" --region ${AWS_REGION} --query 'NetworkInterfaces[0].Association.PublicIp' --output text 2>/dev/null || echo "")
                                 
                                 if [ ! -z "$PUBLIC_IP" ] && [ "$PUBLIC_IP" != "None" ] && [ "$PUBLIC_IP" != "null" ]; then
-                                    echo "🌐 Aplicação disponível em: http://$PUBLIC_IP"
-                                    echo "✅ Deploy finalizado com sucesso!"
+                                    echo "Application available at: http://$PUBLIC_IP"
+                                    echo "Deploy finalized successfully!"
                                 else
-                                    echo "⚠️ IP público não disponível ainda"
-                                    echo "📋 Verifique o console AWS ECS para obter o IP"
+                                    echo "Public IP not available yet"
+                                    echo "Check AWS ECS console for IP"
                                 fi
                             else
-                                echo "⚠️ Network interface não encontrada ou ainda sendo configurada"
-                                echo "📋 Verifique o console AWS ECS - a aplicação pode estar inicializando"
+                                echo "Network interface not found or still being configured"
+                                echo "Check AWS ECS console - application may be initializing"
                             fi
                         else
-                            echo "⚠️ Nenhuma task ativa encontrada"
-                            echo "📋 Verifique o console AWS ECS para status das tasks"
+                            echo "No active task found"
+                            echo "Check AWS ECS console for task status"
                         fi
                         
                         echo ""
-                        echo "📊 Status do serviço:"
-                        aws ecs describe-services --cluster ${CLUSTER_NAME} --services ${SERVICE_NAME} --region ${AWS_REGION} --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' --output table || echo "Erro ao obter status"
+                        echo "Service status:"
+                        aws ecs describe-services --cluster ${CLUSTER_NAME} --services ${SERVICE_NAME} --region ${AWS_REGION} --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}' --output table || echo "Error getting status"
                     '''
                 }
             }
@@ -265,7 +258,7 @@ pipeline {
             sh 'docker rmi ${ECR_REPOSITORY}:${IMAGE_TAG} || true'
             sh 'docker rmi ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} || true'
         }
-        success { echo '🎉 Pipeline executado com sucesso!' }
-        failure { echo '❌ Pipeline falhou!' }
+        success { echo 'Pipeline executed successfully!' }
+        failure { echo 'Pipeline failed!' }
     }
 }

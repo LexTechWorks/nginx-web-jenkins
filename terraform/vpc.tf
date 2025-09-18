@@ -1,4 +1,3 @@
-# Get Pipeline Project VPC
 data "aws_vpc" "pipeline_vpc" {
   filter {
     name   = "tag:Name"
@@ -6,7 +5,6 @@ data "aws_vpc" "pipeline_vpc" {
   }
 }
 
-# Get Pipeline Project Subnets (Public)
 data "aws_subnets" "pipeline_public" {
   filter {
     name   = "vpc-id"
@@ -19,7 +17,6 @@ data "aws_subnets" "pipeline_public" {
   }
 }
 
-# Get specific public subnets
 data "aws_subnet" "pipeline_public_1a" {
   filter {
     name   = "tag:Name"
@@ -34,10 +31,6 @@ data "aws_subnet" "pipeline_public_1b" {
   }
 }
 
-# ECS Security Group - Using existing Pipeline security group
-# No new security group created, using the existing Pipeline SG
-
-# Data source for existing Pipeline Security Group
 data "aws_security_group" "pipeline_sg" {
   filter {
     name   = "group-name"

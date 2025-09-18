@@ -1,4 +1,3 @@
-# Backend Configuration for Terraform S3
 terraform {
   backend "s3" {
     bucket  = "lextechworks"

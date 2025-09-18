@@ -1,5 +1,3 @@
-# Variables for Terraform Configuration
-
 variable "aws_region" {
   description = "AWS region for resources"
   type        = string
@@ -72,7 +70,6 @@ variable "desired_count" {
   default     = 1
 }
 
-# Pipeline VPC Configuration
 variable "pipeline_vpc_name" {
   description = "Name of the Pipeline VPC"
   type        = string

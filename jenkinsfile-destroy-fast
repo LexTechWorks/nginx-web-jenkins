@@ -5,7 +5,6 @@ pipeline {
         AWS_REGION = 'us-east-1'
         ECR_REPOSITORY = 'nginx-web-site'
         
-        // Terraform variables
         TF_VAR_aws_region = 'us-east-1'
         TF_VAR_environment = 'dev'
         TF_VAR_project_name = 'nginx-web-site'
@@ -13,27 +12,27 @@ pipeline {
     }
 
     stages {
-        stage('🚨 DESTRUIÇÃO RÁPIDA') {
+        stage('Fast Destruction') {
             steps {
                 script {
-                    echo "⚡ MODO DESTRUIÇÃO RÁPIDA"
-                    echo "⚠️ Este pipeline remove TUDO sem confirmações extras"
+                    echo "FAST DESTRUCTION MODE"
+                    echo "This pipeline removes EVERYTHING without extra confirmations"
                     
-                    input message: 'DESTRUIR TUDO AGORA?', 
-                          ok: '💥 SIM, DESTRUIR',
+                    input message: 'DESTROY EVERYTHING NOW?', 
+                          ok: 'YES, DESTROY',
                           submitterParameter: 'DESTROYER'
                     
-                    echo "💀 Autorizado por: ${env.DESTROYER}"
+                    echo "Authorized by: ${env.DESTROYER}"
                 }
             }
         }
         
-        stage('Limpar ECR') {
+        stage('Clean ECR') {
             steps {
                 withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh '''
-                        echo "🗑️ Removendo imagens ECR..."
-                        aws ecr list-images --repository-name ${ECR_REPOSITORY} --region ${AWS_REGION} --query 'imageIds[*]' --output json > images.json || echo "Repo não existe"
+                        echo "Removing ECR images..."
+                        aws ecr list-images --repository-name ${ECR_REPOSITORY} --region ${AWS_REGION} --query 'imageIds[*]' --output json > images.json || echo "Repo does not exist"
                         if [ -s images.json ] && [ "$(cat images.json)" != "[]" ]; then
                             aws ecr batch-delete-image --repository-name ${ECR_REPOSITORY} --region ${AWS_REGION} --image-ids file://images.json
                         fi
@@ -48,10 +47,10 @@ pipeline {
                 withCredentials([aws(credentialsId: 'aws-access-key', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     dir('terraform') {
                         sh '''
-                            echo "💥 Destruindo infraestrutura..."
+                            echo "Destroying infrastructure..."
                             terraform init
                             terraform destroy --auto-approve
-                            echo "✅ Destruição completa!"
+                            echo "Destruction complete!"
                         '''
                     }
                 }
@@ -60,7 +59,7 @@ pipeline {
     }
     
     post {
-        success { echo "🎉 DESTRUÍDO COM SUCESSO!" }
-        failure { echo "❌ Falha na destruição - verifique manualmente" }
+        success { echo "DESTROYED SUCCESSFULLY!" }
+        failure { echo "Destruction failed - check manually" }
     }
 }

@@ -1,4 +1,3 @@
-# ECS Task Execution Role
 resource "aws_iam_role" "ecs_task_execution_role" {
   name = "ecsTaskExecutionRole"
 
@@ -20,13 +19,11 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   }
 }
 
-# Attach AWS managed policy for ECS task execution
 resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
   role       = aws_iam_role.ecs_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# ECS Task Role (for tasks to access other AWS services)
 resource "aws_iam_role" "ecs_task_role" {
   name = "ecsTaskRole"
 
@@ -48,7 +45,6 @@ resource "aws_iam_role" "ecs_task_role" {
   }
 }
 
-# CloudWatch Logs permissions for ECS tasks
 resource "aws_iam_role_policy" "ecs_task_logs_policy" {
   name = "ECSTaskLogsPolicy"
   role = aws_iam_role.ecs_task_execution_role.id
